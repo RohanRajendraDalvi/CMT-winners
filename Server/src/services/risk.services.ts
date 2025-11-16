@@ -1,3 +1,5 @@
+import { getDistance } from "geolib";
+import { WeatherData } from "../types/weather.types.js";
 // src/services/risk.service.ts
 export function halfLifeWeight(distanceKm: number, hoursAgo: number) {
   const d = Math.min(distanceKm, 100);
@@ -38,3 +40,47 @@ export function finalSlipProbability(probSlips: number, weatherMult: number) {
   const scale = 0.6 + 0.4 * weatherMult; // tune these constants as needed
   return Math.min(1, probSlips * scale);
 }
+
+
+
+export function mapSlipsToRiskInputs(
+  slips: any[],
+  currentLat: number,
+  currentLon: number,
+  now: Date
+) {
+  return slips.map(slip => {
+    const slipLat = slip.geoPoint.coordinates[1];
+    const slipLon = slip.geoPoint.coordinates[0];
+
+    const distanceMeters = getDistance(
+      { latitude: currentLat, longitude: currentLon },
+      { latitude: slipLat, longitude: slipLon }
+    );
+
+    const distanceKm = distanceMeters / 1000;
+
+    const hoursAgo =
+      (now.getTime() - new Date(slip.timestamp).getTime()) / (1000 * 60 * 60);
+
+    return { distanceKm, hoursAgo };
+  });
+}
+
+
+export function extractWeatherFactors(weather: WeatherData) {
+  const tempC = weather.main.temp;
+  const precipType = weather.weather?.[0]?.main?.toLowerCase() || "";
+
+  // Normalize types
+  let precip = "";
+  if (precipType.includes("snow")) precip = "snow";
+  else if (precipType.includes("sleet")) precip = "sleet";
+  else if (precipType.includes("freezing")) precip = "freezing_rain";
+  else if (precipType.includes("rain")) precip = "rain";
+  else if (precipType.includes("drizzle")) precip = "drizzle";
+
+  return { tempC, precip };
+}
+
+
