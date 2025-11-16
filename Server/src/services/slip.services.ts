@@ -1,12 +1,8 @@
-// src/services/slip.services.ts
-
+import SlipModel from "../models/slip.model";
 import { SlipEvent, SlipEventInput } from "../types/slip.types";
 import { WeatherData } from "../types/weather.types";
-import SlipModel from "../models/slip.model";
 
-/**
- * Record a slip event in MongoDB.
- */
+/** Record a slip event */
 export async function recordSlip(
   event: SlipEventInput,
   weather: WeatherData
@@ -27,10 +23,31 @@ export async function recordSlip(
   return slip;
 }
 
-/**
- * Delete a slip event by ID.
- */
+/** Delete slip */
 export async function deleteSlip(id: string): Promise<boolean> {
   const result = await SlipModel.findByIdAndDelete(id);
   return result !== null;
+}
+
+/** Find nearby slips in the past 96hrs within 100km */
+export async function findNearbySlips(
+  lat: number,
+  lon: number,
+  timestamp: Date
+) {
+  const ninetySixHoursAgo = new Date(timestamp.getTime() - 96 * 60 * 60 * 1000);
+
+  return SlipModel.find({
+    timestamp: { $gte: ninetySixHoursAgo, $lte: timestamp },
+
+    geoPoint: {
+      $near: {
+        $geometry: {
+          type: "Point",
+          coordinates: [lon, lat], // must be [lon, lat]
+        },
+        $maxDistance: 100_000, // 100 km in meters
+      },
+    },
+  });
 }

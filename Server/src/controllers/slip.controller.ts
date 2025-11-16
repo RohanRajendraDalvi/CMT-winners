@@ -12,8 +12,7 @@ export default {
       if (!vehicleId || lat === undefined || lon === undefined || !timestamp) {
         return res.status(400).json({
           success: false,
-          message:
-            "vehicleId, lat, lon, and timestamp (ISO date) are required.",
+          message: "vehicleId, lat, lon, and timestamp are required.",
         });
       }
 
@@ -21,20 +20,21 @@ export default {
       if (isNaN(parsedDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message: "Invalid timestamp format. Use ISO 8601 date string.",
+          message: "Invalid timestamp. Must be ISO date string.",
         });
       }
 
       // Fetch weather
       const weather = await getWeatherByCoords(Number(lat), Number(lon));
 
-      // Save slip + weather
-      const slipEvent = await recordSlip(
+      const slip = await recordSlip(
         {
-          vehicleId: String(vehicleId),
-          lat: Number(lat),
-          lon: Number(lon),
+          vehicleId,
           timestamp: parsedDate,
+          geoPoint: {
+            type: "Point",
+            coordinates: [Number(lon), Number(lat)], // GeoJSON order: [lon, lat]
+          },
         },
         weather
       );
@@ -42,12 +42,12 @@ export default {
       return res.status(200).json({
         success: true,
         message: "Slip recorded successfully.",
-        data: slipEvent,
+        data: slip,
       });
-    } catch (error: any) {
+    } catch (err: any) {
       return res.status(500).json({
         success: false,
-        message: error.message || "Failed to process slip report.",
+        message: err.message || "Failed to record slip.",
       });
     }
   },

@@ -1,11 +1,8 @@
 // src/models/slip.model.ts
-
 import mongoose, { Schema } from "mongoose";
 import { SlipEvent } from "../types/slip.types";
 
-
-
-// Weather schema
+// Weather schema (unchanged)
 const weatherSchema = new Schema({
   coord: {
     lat: Number,
@@ -44,7 +41,6 @@ const weatherSchema = new Schema({
   timezone: Number,
   name: String,
 
-  // Converted date fields
   dt: Number,
   dtDate: Date,
   sunriseDate: Date,
@@ -54,12 +50,19 @@ const weatherSchema = new Schema({
 // Slip schema
 const slipSchema = new Schema<SlipEvent>({
   vehicleId: { type: String, required: true },
-  lat: { type: Number, required: true },
-  lon: { type: Number, required: true },
   timestamp: { type: Date, required: true },
+
+  // GEO JSON POINT
+  geoPoint: {
+    type: { type: String, enum: ["Point"], required: true },
+    coordinates: { type: [Number], required: true }, // [lon, lat]
+  },
 
   weather: { type: weatherSchema, required: true },
 });
+
+// ⭐⭐ IMPORTANT — Create 2dsphere index
+slipSchema.index({ geoPoint: "2dsphere" });
 
 const SlipModel = mongoose.model<SlipEvent>("SlipEvent", slipSchema);
 export default SlipModel;
