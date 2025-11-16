@@ -7,6 +7,7 @@ import routes from "./routes";
 import errorHandler from "./middleware/errorHandlers";
 import homeController from "./controllers/home.controller";
 import weatherRoutes from "./routes/weather.routes";
+import slipRoutes from "./routes/slip.routes";
 
 
 const app = express();
@@ -24,6 +25,7 @@ app.disable("x-powered-by");
 
 app.use("/api", routes);
 app.use("/weather", weatherRoutes);
+app.use("/slip", slipRoutes);
 app.get("/", homeController.home)
 
 // Health check
