@@ -1,5 +1,7 @@
 # Snow Sense – Road Surface Alerts (UI Prototype)
 
+**Author:** Chinmay Mishra
+
 - **Report Slip** – simulate reporting a slippery road condition.
 - **Detect Nearby Slips** – simulate querying for nearby reported slips.
 
