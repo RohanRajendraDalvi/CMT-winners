@@ -1,79 +1,85 @@
+
 # ❄️ SlipSense
 
-**Smart traction risk detection and coaching for winter driving**
 
----
+## Road Surface Alerts UI + Winter Traction Intelligence
+
+
 
 ### 🚗 Overview
 
 Winter driving accidents rise sharply due to hidden traction loss on black ice and snow-covered roads. **SlipSense** is a GenAI-powered mobile system that detects micro-slips and traction risks in real time using only smartphone sensors (and optionally, vehicle OBD data). The app nudges drivers with subtle “⚠️ Traction Risk Ahead” alerts and provides post-trip coaching to help them adapt driving behavior safely in winter conditions.
 
----
-
-### 🌨️ Problem
-
-Traditional navigation apps don’t sense real-world grip or traction. Drivers often realize too late when roads are icy or tires begin to slip. SnowSense bridges this gap by combining real-time sensor fusion and contextual learning to **predict and prevent loss of control events** before they happen.
 
 ---
-
-### 🧠 How It Works
-
-* **Sensor Fusion:** Uses phone accelerometer, gyroscope, GPS, and optional OBD-II data (wheel speed, brake pressure).
-* **Slip Detection:** Detects micro “jerks” — small but significant lateral or longitudinal deviations — that indicate low traction.
-* **Context Awareness:** Integrates weather API and location tiles for snow/ice risk zones.
-* **Driver Feedback:** Provides gentle voice or visual alerts (“Traction risk ahead”) and post-trip insights (“2 risky turns detected”).
-* **Privacy First:** All processing and risk scoring happen **on-device**. Only aggregated risk maps are shared.
+## ❄️ Vision
+Winter driving accidents rise due to invisible traction loss (black ice, compacted snow). **SnowSense** aims to detect micro-slips using smartphone sensors (and optionally OBD-II) and provide timely gentle warnings ("⚠️ Traction risk ahead") plus post-trip coaching.
 
 ---
+## 🚗 UI Prototype (snow-sense-ui)
+### Features
+- Report slip events manually (simulation)
+- Detect nearby reported slips (mocked)
+- Dark theme mobile layout
 
-### 🧩 Data Pipeline
-
-1. **Sensor Ingestion:** Mobile IMU + GPS + OBD optional
-2. **Feature Extraction:** Lateral jerk, wheel slip, traction index
-3. **Labeling:** “Slip events” from harsh braking, ABS-like vibrations
-4. **Model:** On-device anomaly detection / reinforcement-based adaptive threshold
-5. **Alert & Coaching:** Real-time cues + daily safety summaries
-
----
-
-### 📊 Impact Metrics
-
-* % Reduction in risky maneuvers on snowy days
-* Speed compliance during low-traction conditions
-* Driver engagement and adaptation rates
+### Running
+```bash
+cd snow-sense-ui
+npm install
+npx expo start
+```
 
 ---
-
-### 🔒 Privacy & Ethics
-
-* All computation and scoring are on-device.
-* Shared data are **aggregated, anonymized, and tile-based** (never personal trajectories).
-* Users remain in full control of data sharing.
-
----
-
-### 🧰 Tech Stack
-
-* **Frontend:** Flutter / React Native (Mobile UI)
-* **Backend (optional):** FastAPI or Firebase for aggregated map tiles
-* **ML / Analytics:** TensorFlow Lite, PyTorch Mobile
-* **APIs:** OpenWeatherMap, OBD-II Bluetooth adapters
+## 🧠 How It Works (Concept)
+1. Sensor fusion: IMU (accelerometer, gyroscope) + GPS (+ optional OBD data)
+2. Feature extraction: lateral jerk, traction index, micro-slip signatures
+3. Adaptive modeling: on-device anomaly thresholds adjust per driver/context
+4. Feedback loop: real-time minimal alerts + end-of-trip coaching summary
+5. Aggregation: anonymized tile-based risk heatmaps (privacy preserving)
 
 ---
-
-### 🚀 Future Directions
-
-* Integration with vehicle ADAS systems
-* Cross-season adaptation (rain, fog, heat)
-* Gamified safety scoring and community alerts
+## 🧩 Data Pipeline (Planned)
+| Stage | Input | Output |
+|-------|-------|--------|
+| Ingestion | IMU, GPS, OBD | Raw time series |
+| Extraction | Time windows | Jerk, slip indicators |
+| Scoring | Features + context | Traction risk score |
+| Alerting | Score threshold | User notification |
+| Aggregation | Multiple users | Risk map tiles |
 
 ---
+## 📊 Potential Metrics
+- Reduction in risky maneuvers
+- Improved speed compliance in low traction zones
+- Driver adaptation rate over time
 
-### 👥 Team
+---
+## 🔒 Privacy Principles
+- Processing & scoring on-device
+- Shared data are aggregated & anonymized
+- Opt-in for community risk map contribution
 
-**Project:** SnowSense
-**Theme:** GenAI for Safer Mobility
-**Mission:** Bringing common sense to winter driving through on-device intelligence.
+---
+## 🧰 Tech Stack (Target)
+- UI: React Native / Expo
+- ML: TensorFlow Lite / PyTorch Mobile (future)
+- APIs: Weather + optional OBD-II adapter
+- Backend (optional): FastAPI / Firebase for aggregated tiles
+
+---
+## 🚀 Roadmap
+- Refine slip detection model
+- Integrate real weather layers
+- Add passive automatic slip sensing
+- Gamified safety & community alerts
+
+---
+## 👥 Credits
+- UI Prototype Author: Chinmay Mishra
+- Concept & Architecture: SnowSense Team
+
+---
+## Contributing
+Pull requests welcome. For major changes, open an issue first to discuss.
 
 
-Would you like me to make this more **technical (for a hackathon repo)** or more **public-facing (for GitHub discovery & sharing)**? I can tailor the tone and structure accordingly.
