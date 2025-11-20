@@ -1,4 +1,4 @@
-# ❄️ SnowSense
+# ❄️ SlipSense
 
 **Smart traction risk detection and coaching for winter driving**
 
@@ -6,7 +6,7 @@
 
 ### 🚗 Overview
 
-Winter driving accidents rise sharply due to hidden traction loss on black ice and snow-covered roads. **SnowSense** is a GenAI-powered mobile system that detects micro-slips and traction risks in real time using only smartphone sensors (and optionally, vehicle OBD data). The app nudges drivers with subtle “⚠️ Traction Risk Ahead” alerts and provides post-trip coaching to help them adapt driving behavior safely in winter conditions.
+Winter driving accidents rise sharply due to hidden traction loss on black ice and snow-covered roads. **SlipSense** is a GenAI-powered mobile system that detects micro-slips and traction risks in real time using only smartphone sensors (and optionally, vehicle OBD data). The app nudges drivers with subtle “⚠️ Traction Risk Ahead” alerts and provides post-trip coaching to help them adapt driving behavior safely in winter conditions.
 
 ---
 
