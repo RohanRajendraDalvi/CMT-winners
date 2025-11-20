@@ -1,10 +1,15 @@
-# SnowSense
+
+# ❄️ SlipSense
+
 
 ## Road Surface Alerts UI + Winter Traction Intelligence
 
-This repository now contains:
-- `snow-sense-ui/` – React Native + Expo prototype for reporting and viewing slippery conditions. Author: Chinmay Mishra.
-- Core concept docs – Vision and system overview for SnowSense traction risk detection and driver coaching.
+
+
+### 🚗 Overview
+
+Winter driving accidents rise sharply due to hidden traction loss on black ice and snow-covered roads. **SlipSense** is a GenAI-powered mobile system that detects micro-slips and traction risks in real time using only smartphone sensors (and optionally, vehicle OBD data). The app nudges drivers with subtle “⚠️ Traction Risk Ahead” alerts and provides post-trip coaching to help them adapt driving behavior safely in winter conditions.
+
 
 ---
 ## ❄️ Vision
@@ -76,4 +81,5 @@ npx expo start
 ---
 ## Contributing
 Pull requests welcome. For major changes, open an issue first to discuss.
+
 
