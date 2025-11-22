@@ -1,19 +1,23 @@
 // Firebase initialization for Snow Sense
-// 1. Go to Firebase Console → Project Settings → Web App
-// 2. Copy your config object and replace the placeholder values below.
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyDZ4DA5zsoAX80FSNsOliup0lV6x4hWgts',
-  authDomain: 'snowsense-57c5e.firebaseapp.com',
-  projectId: 'snowsense-57c5e',
-  storageBucket: 'snowsense-57c5e.firebasestorage.app',
-  messagingSenderId: '517363917994',
-  appId: '1:517363917994:web:6bba05a7376a44cfcc5cd3',
-  measurementId: 'G-HJSEW1F8JR',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
+
+Object.entries(firebaseConfig).forEach(([k, v]) => {
+  if (!v) {
+    console.warn(`[firebase] Missing env var for ${k}. Check .env or Expo config.`);
+  }
+});
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
