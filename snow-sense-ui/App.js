@@ -96,6 +96,66 @@ export default function App() {
     }
   }, []);
 
+  // Try to obtain current device location; fall back to null if unavailable
+  const getCurrentPosition = useCallback(() => {
+    return new Promise((resolve) => {
+      try {
+        if (navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+            (err) => {
+              console.log('Geolocation error', err);
+              resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+          );
+        } else {
+          resolve(null);
+        }
+      } catch (e) {
+        console.log('Geolocation exception', e);
+        resolve(null);
+      }
+    });
+  }, []);
+
+  const handleReportSlipWithLocation = useCallback(async () => {
+    console.log('Report Slip (with location) pressed');
+    try {
+      const pos = await getCurrentPosition();
+      const lat = pos?.lat ?? 37.7749; // sample fallback (San Francisco)
+      const lon = pos?.lon ?? -122.4194;
+      const vehicleId = user?.email ?? user?.uid ?? 'unknown-vehicle';
+
+      const ok = await reportSlip({ vehicleId, lat, lon, timestamp: new Date().toISOString() });
+      if (ok) {
+        Alert.alert('Reported', 'Your slip has been reported.');
+      } else {
+        Alert.alert('Error', 'Server did not accept the report.');
+      }
+    } catch (error) {
+      console.log('report error', error);
+      Alert.alert('Error', 'Failed to report slip.');
+    }
+  }, [getCurrentPosition, user]);
+
+  const handleDetectNearbySlipsWithLocation = useCallback(async () => {
+    console.log('Nearby Slips (with location) pressed');
+    try {
+      const pos = await getCurrentPosition();
+      const lat = pos?.lat ?? 37.7749;
+      const lon = pos?.lon ?? -122.4194;
+      const ts = new Date().toISOString();
+
+      const count = await detectNearbySlips({ lat, lon, timestamp: ts });
+      const message = count === 0 ? 'No nearby slips detected.' : `${count} nearby slip(s) detected.`;
+      Alert.alert('Nearby Slips', message);
+    } catch (error) {
+      console.log('nearby error', error);
+      Alert.alert('Error', 'Failed to detect nearby slips.');
+    }
+  }, [getCurrentPosition]);
+
   if (authLoading) {
     return (
       <SafeAreaView style={commonStyles.container}>
@@ -119,8 +179,8 @@ export default function App() {
       <StatusBar style="light" />
       <DashboardScreen
         onLogout={handleLogout}
-        onReportSlip={handleReportSlip}
-        onDetectNearbySlips={handleDetectNearbySlips}
+        onReportSlip={handleReportSlipWithLocation}
+        onDetectNearbySlips={handleDetectNearbySlipsWithLocation}
       />
     </SafeAreaView>
   );
