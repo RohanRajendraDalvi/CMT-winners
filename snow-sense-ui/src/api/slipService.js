@@ -1,4 +1,10 @@
-const DEFAULT_SERVER = process.env.SERVER_URL || 'http://localhost:5000';
+// Use Expo public env var for client bundle; fallback to legacy SERVER_URL or localhost.
+// IMPORTANT: On Android emulator, 'localhost' refers to emulator. Use LAN IP or hosted URL.
+const DEFAULT_SERVER = process.env.EXPO_PUBLIC_SERVER_URL || process.env.SERVER_URL || 'http://localhost:5000';
+
+if (!process.env.EXPO_PUBLIC_SERVER_URL && !process.env.SERVER_URL) {
+  console.warn('[slipService] No server URL env var set; using localhost. Set EXPO_PUBLIC_SERVER_URL to your API base (e.g. https://cmt-winners.onrender.com).');
+}
 
 const joinUrl = (base, path) => `${base.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
 
@@ -11,6 +17,7 @@ export const reportSlip = async (payload) => {
   }
 
   const url = joinUrl(DEFAULT_SERVER, '/slip/report');
+  console.log('[slipService] reportSlip URL', url);
   const body = {
     vehicleId: payload.vehicleId || 'unknown',
     lat: payload.lat,
@@ -72,6 +79,7 @@ export const detectNearbySlips = async (opts = {}) => {
   url.searchParams.set('lat', String(opts.lat));
   url.searchParams.set('lon', String(opts.lon));
   url.searchParams.set('timestamp', String(opts.timestamp));
+  console.log('[slipService] detectNearbySlips URL', url.toString());
 
   try {
     const res = await fetch(url.toString());

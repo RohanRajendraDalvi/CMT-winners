@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView, Alert } fr
 import { dashboardStyles } from '../../styles/dashboardStyles';
 import SpeedAccelerationPanel from './SpeedAccelerationPanel';
 
-const DashboardScreen = ({ onLogout, onReportSlip, onDetectNearbySlips }) => {
+// Align prop name with App.js (onDetectNearby)
+const DashboardScreen = ({ onLogout, onReportSlip, onDetectNearby, onOpenAIRisk }) => {
   const [reporting, setReporting] = useState(false);
   const [detecting, setDetecting] = useState(false);
 
@@ -21,7 +22,11 @@ const DashboardScreen = ({ onLogout, onReportSlip, onDetectNearbySlips }) => {
   const handleDetect = async () => {
     try {
       setDetecting(true);
-      await onDetectNearbySlips();
+      if (onDetectNearby) {
+        await onDetectNearby();
+      } else {
+        console.warn('[DashboardScreen] onDetectNearby prop missing');
+      }
     } catch (err) {
       console.log('detect error', err);
     } finally {
@@ -100,6 +105,12 @@ const DashboardScreen = ({ onLogout, onReportSlip, onDetectNearbySlips }) => {
             ) : (
               <Text style={dashboardStyles.buttonText}>Nearby Slips</Text>
             )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[dashboardStyles.button, { marginTop: 12, backgroundColor: '#6366f1' }]}
+            onPress={onOpenAIRisk}
+          >
+            <Text style={dashboardStyles.buttonText}>AI Risk Scan</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

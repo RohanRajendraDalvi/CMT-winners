@@ -9,6 +9,7 @@ import homeController from "./controllers/home.controller";
 import weatherRoutes from "./routes/weather.routes";
 import slipRoutes from "./routes/slip.routes";
 import riskRoutes from "./routes/risk.routes";
+import AIRiskRoutes from "./routes/AIrisk.routes";
 
 
 const app = express();
@@ -28,6 +29,7 @@ app.use("/api", routes);
 app.use("/weather", weatherRoutes);
 app.use("/slip", slipRoutes);
 app.use("/risk", riskRoutes);
+app.use("/airisk", AIRiskRoutes);
 app.get("/", homeController.home)
 
 // Health check
