@@ -1,5 +1,3 @@
-
-
 const DEFAULT_SERVER = process.env.SERVER_URL || 'http://localhost:5000';
 
 const joinUrl = (base, path) => `${base.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -45,8 +43,27 @@ export const detectNearbySlips = async (opts = {}) => {
   if (opts.lat === undefined || opts.lon === undefined || opts.timestamp === undefined) {
     return new Promise((resolve) => {
       setTimeout(() => {
-        const randomCount = Math.floor(Math.random() * 4); // 0–3 nearby slips
-        resolve(randomCount);
+        const randomCount = Math.floor(Math.random() * 4);
+        // Return mock data structure
+        resolve({
+          count: randomCount,
+          slips: Array.from({ length: randomCount }, (_, i) => ({
+            _id: `mock-${i}`,
+            vehicleId: `vehicle-${i}`,
+            timestamp: new Date(Date.now() - Math.random() * 86400000).toISOString(),
+            geoPoint: {
+              type: 'Point',
+              coordinates: [-71.0589 + Math.random() * 0.1, 42.3601 + Math.random() * 0.1]
+            },
+            weather: {
+              main: { temp: 32, humidity: 80, feels_like: 28 },
+              weather: [{ main: 'Snow', description: 'light snow' }],
+              wind: { speed: 10 },
+              visibility: 5000,
+              name: 'Boston'
+            }
+          }))
+        });
       }, 900);
     });
   }
@@ -60,12 +77,15 @@ export const detectNearbySlips = async (opts = {}) => {
     const res = await fetch(url.toString());
     const data = await res.json();
     if (res.ok && data && data.success) {
-      return data.count ?? 0;
+      return {
+        count: data.count ?? 0,
+        slips: data.data ?? []
+      };
     }
     console.warn('[slipService] detectNearbySlips response not ok', res.status, data);
-    return 0;
+    return { count: 0, slips: [] };
   } catch (err) {
     console.warn('[slipService] detectNearbySlips failed', err);
-    return 0;
+    return { count: 0, slips: [] };
   }
 };

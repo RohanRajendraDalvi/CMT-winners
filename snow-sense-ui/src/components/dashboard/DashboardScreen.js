@@ -1,4 +1,3 @@
-// components/Dashboard/DashboardScreen.js
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { dashboardStyles } from '../../styles/dashboardStyles';
@@ -13,7 +12,6 @@ const DashboardScreen = ({ onLogout, onReportSlip, onDetectNearbySlips }) => {
       setReporting(true);
       await onReportSlip();
     } catch (err) {
-      // swallow — parent already handles alerts
       console.log('report error', err);
     } finally {
       setReporting(false);

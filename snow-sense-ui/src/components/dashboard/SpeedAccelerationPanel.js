@@ -30,8 +30,8 @@ const SpeedAccelerationPanel = ({ onSlipDetected }) => {
 
     // Thresholds for slip detection
     const YAW_THRESHOLD = 0.5; // rad/s - sudden rotation around vertical axis
-    const LATERAL_ACCEL_THRESHOLD = 2; // m/s² - sideways acceleration
-    const TOTAL_ACCEL_THRESHOLD = 2; // m/s² - total acceleration spike
+    const LATERAL_ACCEL_THRESHOLD = 2; // m/s² - sideways acceleration (orignial 4)
+    const TOTAL_ACCEL_THRESHOLD = 2; // m/s² - total acceleration spike (original 5)
     
     // Calculate absolute values
     const yawRate = Math.abs(gyroscope.z); // Z-axis is typically vertical (yaw)
