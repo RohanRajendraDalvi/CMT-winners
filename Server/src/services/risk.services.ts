@@ -1,5 +1,6 @@
 import { getDistance } from "geolib";
 import { WeatherData } from "../types/weather.types.js";
+
 // src/services/risk.service.ts
 export function halfLifeWeight(distanceKm: number, hoursAgo: number) {
   const d = Math.min(distanceKm, 100);
@@ -8,15 +9,63 @@ export function halfLifeWeight(distanceKm: number, hoursAgo: number) {
   return Math.pow(0.5, exponent); // 0.5^(d/25 + t/36)
 }
 
-const W_REF = Math.pow(0.5, 1/25 + 1/36); // slip at d=1km, t=1hr
-const NORMALIZER = 3 * W_REF; // sum that maps to 1.0
+/**
+ * Calculate required slips for 100% probability based on population density
+ * Uses logarithmic growth to scale with population
+ * 
+ * Examples:
+ * - 100 people/km² → ~1 slip needed
+ * - 1,000 people/km² → ~3 slips needed
+ * - 20,000 people/km² → ~14 slips needed
+ * 
+ * Formula: slips = 1 + log10(pop/100) * 4
+ */
+export function calculateRequiredSlips(populationPerKm2: number): number {
+  // Minimum population to avoid log issues
+  const pop = Math.max(populationPerKm2, 10);
+  
+  // Logarithmic growth function
+  // Base case: 100 people = 1 slip
+  // Each 10x increase in population requires ~4 more slips
+  const requiredSlips = 1 + Math.log10(pop / 100) * 4;
+  
+  // Ensure minimum of 1 slip
+  return Math.max(1, requiredSlips);
+}
 
+/**
+ * Create a population-adjusted normalizer
+ * This replaces the fixed NORMALIZER constant
+ */
+export function createNormalizer(populationPerKm2: number): number {
+  const requiredSlips = calculateRequiredSlips(populationPerKm2);
+  
+  // Weight of a single slip at d=1km, t=1hr
+  const W_REF = Math.pow(0.5, 1/25 + 1/36);
+  
+  // Normalizer scales with required slips
+  return requiredSlips * W_REF;
+}
+
+/**
+ * Compute slip probability with population adjustment
+ */
 export function computeSlipProbabilityFromHistory(
-  slips: Array<{ distanceKm: number; hoursAgo: number }>
+  slips: Array<{ distanceKm: number; hoursAgo: number }>,
+  populationPerKm2: number
 ) {
   const raw = slips.reduce((acc, s) => acc + halfLifeWeight(s.distanceKm, s.hoursAgo), 0);
-  const probSlips = Math.min(1, raw / NORMALIZER);
-  return { raw, probSlips };
+  
+  // Use population-adjusted normalizer
+  const normalizer = createNormalizer(populationPerKm2);
+  const probSlips = Math.min(1, raw / normalizer);
+  
+  return { 
+    raw, 
+    probSlips,
+    requiredSlips: calculateRequiredSlips(populationPerKm2),
+    normalizer 
+  };
 }
 
 /** weather model: returns M_weather in [0,1] */
@@ -40,8 +89,6 @@ export function finalSlipProbability(probSlips: number, weatherMult: number) {
   const scale = 0.6 + 0.4 * weatherMult; // tune these constants as needed
   return Math.min(1, probSlips * scale);
 }
-
-
 
 export function mapSlipsToRiskInputs(
   slips: any[],
@@ -67,7 +114,6 @@ export function mapSlipsToRiskInputs(
   });
 }
 
-
 export function extractWeatherFactors(weather: WeatherData) {
   const tempC = weather.main.temp;
   const precipType = weather.weather?.[0]?.main?.toLowerCase() || "";
@@ -82,5 +128,3 @@ export function extractWeatherFactors(weather: WeatherData) {
 
   return { tempC, precip };
 }
-
-
