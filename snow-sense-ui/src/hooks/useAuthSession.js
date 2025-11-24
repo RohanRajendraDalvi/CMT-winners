@@ -1,18 +1,25 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { getAuthInstance } from '../api/firebase';
 
-export const useAuthSession = (authInstance) => {
+export const useAuthSession = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(authInstance, (firebaseUser) => {
-      setUser(firebaseUser || null);
-      setLoading(false);
-    });
+    let unsubscribe = null;
 
-    return () => unsubscribe();
-  }, [authInstance]);
+    const setup = async () => {
+      const auth = await getAuthInstance();
+      unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        setUser(firebaseUser || null);
+        setLoading(false);
+      });
+    };
+
+    setup();
+    return () => unsubscribe?.();
+  }, []);
 
   return { user, loading };
 };
