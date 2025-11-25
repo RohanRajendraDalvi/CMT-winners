@@ -7,9 +7,7 @@ const joinUrl = (base, path) =>
   `${base.replace(/\/$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
 
 
-export const assessAIRisk = async (
-  payload
-) => {
+export const assessAIRisk = async (payload) => {
   const url = joinUrl(DEFAULT_SERVER, "/airisk/assess");
   console.log("[AIRiskService] URL:", url);
 
@@ -19,36 +17,39 @@ export const assessAIRisk = async (
   formData.append("lon", String(payload.lon));
   formData.append("timestamp", payload.timestamp || new Date().toISOString());
 
-  const filename = payload.imageUri.split("/").pop() || "image.jpg";
-  const filetype = filename.endsWith(".png")
-    ? "image/png"
-    : "image/jpeg";
-
-  formData.append("image", {
-    uri: payload.imageUri,
-    name: filename,
-    type: filetype,
-  });
+  // Web path: a real File object passed as payload.file
+  if (typeof window !== 'undefined' && payload.file) {
+    formData.append('image', payload.file);
+  } else {
+    // Native path: React Native file object with uri
+    if (!payload.imageUri) {
+      console.warn('[AIRiskService] Missing imageUri or file for assessment');
+      return { success: false, error: 'No image provided' };
+    }
+    const filename = payload.imageUri.split('/').pop() || 'image.jpg';
+    const filetype = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    formData.append('image', {
+      uri: payload.imageUri,
+      name: filename,
+      type: filetype,
+    });
+  }
 
   try {
     const res = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       body: formData,
-      headers: {
-        Accept: "application/json",
-      },
+      // Do NOT set Content-Type manually; browser / RN sets boundary
+      headers: { Accept: 'application/json' },
     });
-
     const data = await res.json().catch(() => null);
-
     if (!res.ok || !data) {
-      console.warn("[AIRiskService] Server error:", res.status, data);
-      return { success: false };
+      console.warn('[AIRiskService] Server error:', res.status, data);
+      return data || { success: false };
     }
-
     return data;
   } catch (err) {
-    console.warn("[AIRiskService] Network error:", err);
-    return { success: false };
+    console.warn('[AIRiskService] Network error:', err);
+    return { success: false, error: 'Network error' };
   }
 };

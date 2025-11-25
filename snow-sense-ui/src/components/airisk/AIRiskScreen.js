@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform, ScrollView } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { commonStyles } from '../../styles/commonStyles';
 import { assessAIRisk } from '../../api/AIrisk';
 
@@ -48,7 +49,14 @@ export default function AIRiskScreen({ onBack }) {
     setResult(null);
     
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      // Capture at lower quality to reduce initial size
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+      // Resize & compress further (max width 800px) for upload efficiency
+      const manipulated = await ImageManipulator.manipulateAsync(
+        photo.uri,
+        [{ resize: { width: 800 } }],
+        { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
+      );
       setShowCamera(false);
       setLoading(true);
 
@@ -60,7 +68,7 @@ export default function AIRiskScreen({ onBack }) {
         lat: pos.coords.latitude,
         lon: pos.coords.longitude,
         timestamp: new Date().toISOString(),
-        imageUri: photo.uri,
+        imageUri: manipulated.uri,
       };
 
       const data = await assessAIRisk(payload);
@@ -82,52 +90,74 @@ export default function AIRiskScreen({ onBack }) {
   const handleWebUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
     setLoading(true);
     setError('');
     setResult(null);
-    
     try {
-      // Get location for web
-      const loc = await Location.requestForegroundPermissionsAsync();
-      let lat = 0, lon = 0;
-      
-      if (loc.status === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
-      }
-      
-      // Convert file to data URI
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const payload = {
-          vehicleId: 'web_device',
-          lat,
-          lon,
-          timestamp: new Date().toISOString(),
-          imageUri: e.target.result,
-        };
-        
+      const locPerm = await Location.requestForegroundPermissionsAsync();
+      let lat = 42.3601, lon = -71.0589; // fallback
+      if (locPerm.status === 'granted') {
         try {
-          const data = await assessAIRisk(payload);
-          if (!data.success) {
-            setError(data.error || 'Assessment failed');
-          } else {
-            setResult(data);
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = pos.coords.latitude;
+          lon = pos.coords.longitude;
+        } catch {}
+      }
+      // Compress image client-side using canvas
+      const compressedFile = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 800;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              const scale = Math.min(maxDim / width, maxDim / height);
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => {
+                if (!blob) return reject(new Error('Compression failed'));
+                const newFile = new File([blob], 'upload.jpg', { type: 'image/jpeg' });
+                console.log('[AIRiskScreen:web] original size KB:', (file.size/1024).toFixed(2), 'compressed size KB:', (blob.size/1024).toFixed(2));
+                resolve(newFile);
+              },
+              'image/jpeg',
+              0.6
+            );
+          } catch (err) {
+            reject(err);
           }
-        } catch (err) {
-          console.log('[AIRiskScreen] assessment error', err);
-          setError('Failed to assess risk. Please try again.');
-        } finally {
-          setLoading(false);
-        }
-      };
-      reader.readAsDataURL(file);
+        };
+        img.onerror = reject;
+        const reader = new FileReader();
+        reader.onload = (e) => { img.src = e.target.result; };
+        reader.readAsDataURL(file);
+      });
+
+      const data = await assessAIRisk({
+        vehicleId: 'web_device',
+        lat,
+        lon,
+        timestamp: new Date().toISOString(),
+        file: compressedFile,
+      });
+      if (!data.success) {
+        setError(data.error || 'Assessment failed');
+      } else {
+        setResult(data);
+      }
     } catch (e) {
       console.log('[AIRiskScreen] web upload error', e);
       setError('Failed to process image');
+    } finally {
       setLoading(false);
+      event.target.value = '';
     }
   };
 
@@ -177,28 +207,181 @@ export default function AIRiskScreen({ onBack }) {
           ) : null}
 
           {result && (
-            <View style={styles.resultBox}>
-              <Text style={styles.resultTitle}>✅ Assessment Complete</Text>
-              <View style={styles.resultContent}>
-                {result.riskLevel && (
-                  <View style={styles.resultRow}>
-                    <Text style={styles.resultLabel}>Risk Level:</Text>
-                    <View style={[styles.badge, styles[`badge${result.riskLevel}`]]}>
-                      <Text style={styles.badgeText}>{result.riskLevel}</Text>
+            <View style={styles.resultsContainer}>
+              {/* Main Risk Card */}
+              <View style={styles.riskCard}>
+                <Text style={styles.cardTitle}>🎯 Risk Assessment</Text>
+                <View style={styles.riskLevelContainer}>
+                  <Text style={styles.riskLevelLabel}>Current Risk Level</Text>
+                  <View style={[styles.riskBadge, styles[`risk${result.riskLevel}`]]}>
+                    <Text style={styles.riskBadgeText}>{result.riskLevel || 'UNKNOWN'}</Text>
+                  </View>
+                </View>
+                
+                {result.gradientAnalysis?.confidence && (
+                  <View style={styles.confidenceBar}>
+                    <Text style={styles.confidenceLabel}>Confidence</Text>
+                    <View style={styles.progressBarBg}>
+                      <View style={[styles.progressBarFill, { width: `${result.gradientAnalysis.confidence * 100}%` }]} />
+                    </View>
+                    <Text style={styles.confidenceValue}>{(result.gradientAnalysis.confidence * 100).toFixed(1)}%</Text>
+                  </View>
+                )}
+                
+                {result.cumulativeSlipScore && (
+                  <View style={styles.scoreRow}>
+                    <Text style={styles.scoreLabel}>Cumulative Slip Score</Text>
+                    <Text style={styles.scoreValue}>{result.cumulativeSlipScore}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Location & Map Card */}
+              {result.location && (
+                <View style={styles.mapCard}>
+                  <Text style={styles.cardTitle}>📍 Location</Text>
+                  <View style={styles.mapContainer}>
+                    <View style={styles.mapPlaceholder}>
+                      <Text style={styles.mapIcon}>🗺️</Text>
+                      <Text style={styles.coordText}>
+                        {result.location.lat.toFixed(6)}, {result.location.lon.toFixed(6)}
+                      </Text>
+                    </View>
+                    {/* Static map image */}
+                    {Platform.OS === 'web' && (
+                      <img
+                        src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-s+6366f1(${result.location.lon},${result.location.lat})/${result.location.lon},${result.location.lat},13,0/400x200@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`}
+                        alt="Location map"
+                        style={{ width: '100%', height: 200, borderRadius: 12, marginTop: 12 }}
+                      />
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Weather Card */}
+              {result.currentWeather && (
+                <View style={styles.weatherCard}>
+                  <Text style={styles.cardTitle}>🌤️ Current Weather</Text>
+                  <View style={styles.weatherContent}>
+                    <View style={styles.weatherRow}>
+                      <View style={styles.weatherItem}>
+                        <Text style={styles.weatherIcon}>🌡️</Text>
+                        <Text style={styles.weatherValue}>{result.currentWeather.temperature_C}°C</Text>
+                        <Text style={styles.weatherLabel}>Temperature</Text>
+                      </View>
+                      <View style={styles.weatherItem}>
+                        <Text style={styles.weatherIcon}>💧</Text>
+                        <Text style={styles.weatherValue}>{result.currentWeather.precipitation}</Text>
+                        <Text style={styles.weatherLabel}>Precipitation</Text>
+                      </View>
+                    </View>
+                    <View style={styles.weatherDescription}>
+                      <Text style={styles.weatherDescText}>{result.currentWeather.description}</Text>
                     </View>
                   </View>
-                )}
-                {result.confidence && (
-                  <View style={styles.resultRow}>
-                    <Text style={styles.resultLabel}>Confidence:</Text>
-                    <Text style={styles.resultValue}>{(result.confidence * 100).toFixed(1)}%</Text>
-                  </View>
-                )}
-                <View style={styles.jsonContainer}>
-                  <Text style={styles.jsonLabel}>Full Response:</Text>
-                  <Text style={styles.jsonText}>{JSON.stringify(result, null, 2)}</Text>
                 </View>
-              </View>
+              )}
+
+              {/* Nearby Slips Card */}
+              {result.slipsData && (
+                <View style={styles.slipsCard}>
+                  <Text style={styles.cardTitle}>⚠️ Nearby Slip Incidents</Text>
+                  <View style={styles.slipsHeader}>
+                    <Text style={styles.slipsCount}>{result.slipsData.nearbySlipsCount || 0}</Text>
+                    <Text style={styles.slipsCountLabel}>incidents within proximity</Text>
+                  </View>
+                  {result.slipsData.slips && result.slipsData.slips.length > 0 && (
+                    <View style={styles.slipsList}>
+                      {result.slipsData.slips.slice(0, 3).map((slip, idx) => (
+                        <View key={slip.id || idx} style={styles.slipItem}>
+                          <View style={styles.slipDot} />
+                          <View style={styles.slipInfo}>
+                            <Text style={styles.slipTime}>
+                              {new Date(slip.timestamp).toLocaleDateString()} at{' '}
+                              {new Date(slip.timestamp).toLocaleTimeString()}
+                            </Text>
+                            {slip.weather?.main && (
+                              <Text style={styles.slipWeather}>
+                                {slip.weather.main.temp}°C, {slip.weather.weather?.[0]?.description || 'N/A'}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      ))}
+                      {result.slipsData.slips.length > 3 && (
+                        <Text style={styles.moreSlips}>+ {result.slipsData.slips.length - 3} more incidents</Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Risk Factors Card */}
+              {result.riskFactors && (
+                <View style={styles.factorsCard}>
+                  <Text style={styles.cardTitle}>📊 Risk Factors Analysis</Text>
+                  <View style={styles.factorsList}>
+                    {result.riskFactors.temperatureFrictionCoeff !== undefined && (
+                      <View style={styles.factorRow}>
+                        <Text style={styles.factorLabel}>Temperature Friction</Text>
+                        <View style={styles.factorBar}>
+                          <View style={[styles.factorFill, { width: `${result.riskFactors.temperatureFrictionCoeff * 100}%`, backgroundColor: '#f59e0b' }]} />
+                        </View>
+                        <Text style={styles.factorValue}>{(result.riskFactors.temperatureFrictionCoeff * 100).toFixed(1)}%</Text>
+                      </View>
+                    )}
+                    {result.riskFactors.moistureRiskFactor !== undefined && (
+                      <View style={styles.factorRow}>
+                        <Text style={styles.factorLabel}>Moisture Risk</Text>
+                        <View style={styles.factorBar}>
+                          <View style={[styles.factorFill, { width: `${result.riskFactors.moistureRiskFactor * 100}%`, backgroundColor: '#3b82f6' }]} />
+                        </View>
+                        <Text style={styles.factorValue}>{(result.riskFactors.moistureRiskFactor * 100).toFixed(1)}%</Text>
+                      </View>
+                    )}
+                    {result.riskFactors.historicalWeight !== undefined && (
+                      <View style={styles.factorRow}>
+                        <Text style={styles.factorLabel}>Historical Weight</Text>
+                        <View style={styles.factorBar}>
+                          <View style={[styles.factorFill, { width: `${result.riskFactors.historicalWeight * 100}%`, backgroundColor: '#8b5cf6' }]} />
+                        </View>
+                        <Text style={styles.factorValue}>{(result.riskFactors.historicalWeight * 100).toFixed(1)}%</Text>
+                      </View>
+                    )}
+                    {result.aiRoadSlipAssessment?.visionScore !== undefined && (
+                      <View style={styles.factorRow}>
+                        <Text style={styles.factorLabel}>AI Vision Score</Text>
+                        <View style={styles.factorBar}>
+                          <View style={[styles.factorFill, { width: `${result.aiRoadSlipAssessment.normalized * 100}%`, backgroundColor: '#6366f1' }]} />
+                        </View>
+                        <Text style={styles.factorValue}>{(result.aiRoadSlipAssessment.normalized * 100).toFixed(1)}%</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Gradient Analysis Card */}
+              {result.gradientAnalysis && (
+                <View style={styles.gradientCard}>
+                  <Text style={styles.cardTitle}>🔬 Gradient Analysis</Text>
+                  <View style={styles.gradientGrid}>
+                    <View style={styles.gradientItem}>
+                      <Text style={styles.gradientValue}>{(result.gradientAnalysis.environmentalRisk * 100).toFixed(1)}%</Text>
+                      <Text style={styles.gradientLabel}>Environmental</Text>
+                    </View>
+                    <View style={styles.gradientItem}>
+                      <Text style={styles.gradientValue}>{(result.gradientAnalysis.historicalRisk * 100).toFixed(1)}%</Text>
+                      <Text style={styles.gradientLabel}>Historical</Text>
+                    </View>
+                    <View style={styles.gradientItem}>
+                      <Text style={styles.gradientValue}>{(result.gradientAnalysis.combinedRisk * 100).toFixed(1)}%</Text>
+                      <Text style={styles.gradientLabel}>Combined</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -288,28 +471,173 @@ export default function AIRiskScreen({ onBack }) {
         ) : null}
 
         {result && (
-          <View style={styles.resultBox}>
-            <Text style={styles.resultTitle}>✅ Assessment Complete</Text>
-            <View style={styles.resultContent}>
-              {result.riskLevel && (
-                <View style={styles.resultRow}>
-                  <Text style={styles.resultLabel}>Risk Level:</Text>
-                  <View style={[styles.badge, styles[`badge${result.riskLevel}`]]}>
-                    <Text style={styles.badgeText}>{result.riskLevel}</Text>
+          <View style={styles.resultsContainer}>
+            {/* Main Risk Card */}
+            <View style={styles.riskCard}>
+              <Text style={styles.cardTitle}>🎯 Risk Assessment</Text>
+              <View style={styles.riskLevelContainer}>
+                <Text style={styles.riskLevelLabel}>Current Risk Level</Text>
+                <View style={[styles.riskBadge, styles[`risk${result.riskLevel}`]]}>
+                  <Text style={styles.riskBadgeText}>{result.riskLevel || 'UNKNOWN'}</Text>
+                </View>
+              </View>
+              
+              {result.gradientAnalysis?.confidence && (
+                <View style={styles.confidenceBar}>
+                  <Text style={styles.confidenceLabel}>Confidence</Text>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${result.gradientAnalysis.confidence * 100}%` }]} />
+                  </View>
+                  <Text style={styles.confidenceValue}>{(result.gradientAnalysis.confidence * 100).toFixed(1)}%</Text>
+                </View>
+              )}
+              
+              {result.cumulativeSlipScore && (
+                <View style={styles.scoreRow}>
+                  <Text style={styles.scoreLabel}>Cumulative Slip Score</Text>
+                  <Text style={styles.scoreValue}>{result.cumulativeSlipScore}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Location & Map Card */}
+            {result.location && (
+              <View style={styles.mapCard}>
+                <Text style={styles.cardTitle}>📍 Location</Text>
+                <View style={styles.mapContainer}>
+                  <View style={styles.mapPlaceholder}>
+                    <Text style={styles.mapIcon}>🗺️</Text>
+                    <Text style={styles.coordText}>
+                      {result.location.lat.toFixed(6)}, {result.location.lon.toFixed(6)}
+                    </Text>
                   </View>
                 </View>
-              )}
-              {result.confidence && (
-                <View style={styles.resultRow}>
-                  <Text style={styles.resultLabel}>Confidence:</Text>
-                  <Text style={styles.resultValue}>{(result.confidence * 100).toFixed(1)}%</Text>
-                </View>
-              )}
-              <View style={styles.jsonContainer}>
-                <Text style={styles.jsonLabel}>Full Response:</Text>
-                <Text style={styles.jsonText}>{JSON.stringify(result, null, 2)}</Text>
               </View>
-            </View>
+            )}
+
+            {/* Weather Card */}
+            {result.currentWeather && (
+              <View style={styles.weatherCard}>
+                <Text style={styles.cardTitle}>🌤️ Current Weather</Text>
+                <View style={styles.weatherContent}>
+                  <View style={styles.weatherRow}>
+                    <View style={styles.weatherItem}>
+                      <Text style={styles.weatherIcon}>🌡️</Text>
+                      <Text style={styles.weatherValue}>{result.currentWeather.temperature_C}°C</Text>
+                      <Text style={styles.weatherLabel}>Temperature</Text>
+                    </View>
+                    <View style={styles.weatherItem}>
+                      <Text style={styles.weatherIcon}>💧</Text>
+                      <Text style={styles.weatherValue}>{result.currentWeather.precipitation}</Text>
+                      <Text style={styles.weatherLabel}>Precipitation</Text>
+                    </View>
+                  </View>
+                  <View style={styles.weatherDescription}>
+                    <Text style={styles.weatherDescText}>{result.currentWeather.description}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Nearby Slips Card */}
+            {result.slipsData && (
+              <View style={styles.slipsCard}>
+                <Text style={styles.cardTitle}>⚠️ Nearby Slip Incidents</Text>
+                <View style={styles.slipsHeader}>
+                  <Text style={styles.slipsCount}>{result.slipsData.nearbySlipsCount || 0}</Text>
+                  <Text style={styles.slipsCountLabel}>incidents within proximity</Text>
+                </View>
+                {result.slipsData.slips && result.slipsData.slips.length > 0 && (
+                  <View style={styles.slipsList}>
+                    {result.slipsData.slips.slice(0, 3).map((slip, idx) => (
+                      <View key={slip.id || idx} style={styles.slipItem}>
+                        <View style={styles.slipDot} />
+                        <View style={styles.slipInfo}>
+                          <Text style={styles.slipTime}>
+                            {new Date(slip.timestamp).toLocaleDateString()} at{' '}
+                            {new Date(slip.timestamp).toLocaleTimeString()}
+                          </Text>
+                          {slip.weather?.main && (
+                            <Text style={styles.slipWeather}>
+                              {slip.weather.main.temp}°C, {slip.weather.weather?.[0]?.description || 'N/A'}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                    {result.slipsData.slips.length > 3 && (
+                      <Text style={styles.moreSlips}>+ {result.slipsData.slips.length - 3} more incidents</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Risk Factors Card */}
+            {result.riskFactors && (
+              <View style={styles.factorsCard}>
+                <Text style={styles.cardTitle}>📊 Risk Factors Analysis</Text>
+                <View style={styles.factorsList}>
+                  {result.riskFactors.temperatureFrictionCoeff !== undefined && (
+                    <View style={styles.factorRow}>
+                      <Text style={styles.factorLabel}>Temperature Friction</Text>
+                      <View style={styles.factorBar}>
+                        <View style={[styles.factorFill, { width: `${result.riskFactors.temperatureFrictionCoeff * 100}%`, backgroundColor: '#f59e0b' }]} />
+                      </View>
+                      <Text style={styles.factorValue}>{(result.riskFactors.temperatureFrictionCoeff * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                  {result.riskFactors.moistureRiskFactor !== undefined && (
+                    <View style={styles.factorRow}>
+                      <Text style={styles.factorLabel}>Moisture Risk</Text>
+                      <View style={styles.factorBar}>
+                        <View style={[styles.factorFill, { width: `${result.riskFactors.moistureRiskFactor * 100}%`, backgroundColor: '#3b82f6' }]} />
+                      </View>
+                      <Text style={styles.factorValue}>{(result.riskFactors.moistureRiskFactor * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                  {result.riskFactors.historicalWeight !== undefined && (
+                    <View style={styles.factorRow}>
+                      <Text style={styles.factorLabel}>Historical Weight</Text>
+                      <View style={styles.factorBar}>
+                        <View style={[styles.factorFill, { width: `${result.riskFactors.historicalWeight * 100}%`, backgroundColor: '#8b5cf6' }]} />
+                      </View>
+                      <Text style={styles.factorValue}>{(result.riskFactors.historicalWeight * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                  {result.aiRoadSlipAssessment?.visionScore !== undefined && (
+                    <View style={styles.factorRow}>
+                      <Text style={styles.factorLabel}>AI Vision Score</Text>
+                      <View style={styles.factorBar}>
+                        <View style={[styles.factorFill, { width: `${result.aiRoadSlipAssessment.normalized * 100}%`, backgroundColor: '#6366f1' }]} />
+                      </View>
+                      <Text style={styles.factorValue}>{(result.aiRoadSlipAssessment.normalized * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Gradient Analysis Card */}
+            {result.gradientAnalysis && (
+              <View style={styles.gradientCard}>
+                <Text style={styles.cardTitle}>🔬 Gradient Analysis</Text>
+                <View style={styles.gradientGrid}>
+                  <View style={styles.gradientItem}>
+                    <Text style={styles.gradientValue}>{(result.gradientAnalysis.environmentalRisk * 100).toFixed(1)}%</Text>
+                    <Text style={styles.gradientLabel}>Environmental</Text>
+                  </View>
+                  <View style={styles.gradientItem}>
+                    <Text style={styles.gradientValue}>{(result.gradientAnalysis.historicalRisk * 100).toFixed(1)}%</Text>
+                    <Text style={styles.gradientLabel}>Historical</Text>
+                  </View>
+                  <View style={styles.gradientItem}>
+                    <Text style={styles.gradientValue}>{(result.gradientAnalysis.combinedRisk * 100).toFixed(1)}%</Text>
+                    <Text style={styles.gradientLabel}>Combined</Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -434,77 +762,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  resultBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  resultTitle: {
-    color: '#f1f5f9',
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  resultContent: {
-    gap: 12,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  resultLabel: {
-    color: '#94a3b8',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  resultValue: {
-    color: '#f1f5f9',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  badgeLow: {
-    backgroundColor: '#166534',
-  },
-  badgeMedium: {
-    backgroundColor: '#854d0e',
-  },
-  badgeHigh: {
-    backgroundColor: '#7f1d1d',
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  jsonContainer: {
-    backgroundColor: '#0f172a',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  jsonLabel: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  jsonText: {
-    color: '#e2e8f0',
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    lineHeight: 16,
-  },
   backButton: {
     backgroundColor: '#334155',
     paddingVertical: 14,
@@ -591,5 +848,323 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     backgroundColor: '#6366f1',
+  },
+
+  // Results Container
+  resultsContainer: {
+    gap: 16,
+    marginBottom: 24,
+  },
+  
+  // Card Styles
+  riskCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  cardTitle: {
+    color: '#f1f5f9',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  riskLevelContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  riskLevelLabel: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 12,
+  },
+  riskBadge: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  riskLOW: {
+    backgroundColor: '#166534',
+  },
+  riskMODERATE: {
+    backgroundColor: '#854d0e',
+  },
+  riskHIGH: {
+    backgroundColor: '#7f1d1d',
+  },
+  riskBadgeText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  confidenceBar: {
+    marginTop: 16,
+  },
+  confidenceLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: '#0f172a',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#6366f1',
+    borderRadius: 4,
+  },
+  confidenceValue: {
+    color: '#f1f5f9',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  scoreLabel: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  scoreValue: {
+    color: '#f1f5f9',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  
+  // Map Card
+  mapCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  mapContainer: {
+    overflow: 'hidden',
+    borderRadius: 12,
+  },
+  mapPlaceholder: {
+    backgroundColor: '#0f172a',
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 120,
+  },
+  mapIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  coordText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  
+  // Weather Card
+  weatherCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  weatherContent: {
+    gap: 16,
+  },
+  weatherRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  weatherItem: {
+    alignItems: 'center',
+  },
+  weatherIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  weatherValue: {
+    color: '#f1f5f9',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  weatherLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  weatherDescription: {
+    backgroundColor: '#0f172a',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  weatherDescText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  
+  // Slips Card
+  slipsCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  slipsHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  slipsCount: {
+    color: '#f59e0b',
+    fontSize: 48,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  slipsCountLabel: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  slipsList: {
+    gap: 12,
+  },
+  slipItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#0f172a',
+    padding: 12,
+    borderRadius: 8,
+  },
+  slipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f59e0b',
+    marginTop: 6,
+    marginRight: 12,
+  },
+  slipInfo: {
+    flex: 1,
+  },
+  slipTime: {
+    color: '#f1f5f9',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  slipWeather: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  moreSlips: {
+    color: '#6366f1',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  
+  // Factors Card
+  factorsCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  factorsList: {
+    gap: 16,
+  },
+  factorRow: {
+    gap: 8,
+  },
+  factorLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  factorBar: {
+    height: 24,
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  factorFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  factorValue: {
+    color: '#f1f5f9',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  
+  // Gradient Card
+  gradientCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  gradientGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  gradientItem: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  gradientValue: {
+    color: '#6366f1',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  gradientLabel: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

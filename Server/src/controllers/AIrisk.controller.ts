@@ -63,9 +63,9 @@ export async function assessAIRisk(req: Request, res: Response) {
       });
     }
 
-    // Process image - standardize to 512x512
-    const processedPath = `uploads/airisk_${vehicleId}_${Date.now()}.jpg`;
-    
+    // Process image - standardize to 512x512 into temp file
+    const processedPath = `${req.file.path.replace(/\\/g, '/')}_processed.jpg`;
+
     await sharp(req.file.path)
       .resize(512, 512, { 
         fit: "cover",
@@ -74,8 +74,8 @@ export async function assessAIRisk(req: Request, res: Response) {
       .jpeg({ quality: 85 })
       .toFile(processedPath);
 
-    // Clean up original upload
-    fs.unlinkSync(req.file.path);
+    // Clean up original upload ASAP
+    try { fs.unlinkSync(req.file.path); } catch {}
 
     console.log(`[AI Risk] Processing for vehicle ${vehicleId} at (${latitude}, ${longitude})`);
 
@@ -88,8 +88,8 @@ export async function assessAIRisk(req: Request, res: Response) {
       processedPath
     );
 
-    // Optionally clean up processed image
-    // fs.unlinkSync(processedPath);
+    // Clean up processed image before responding
+    try { fs.unlinkSync(processedPath); } catch {}
 
     return res.json({
       success: true,
