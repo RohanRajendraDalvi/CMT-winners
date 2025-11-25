@@ -223,7 +223,10 @@ export async function calculateAIRiskAssessment(
       nearbySlipsCount: slips.length,
       slips: slips.map(s => ({
         id: s._id,
-        timestamp: s.timestamp
+        vehicleId: s.vehicleId,
+        timestamp: s.timestamp,
+        geoPoint: s.geoPoint,
+        weather: s.weather
       }))
     },
     

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform, ScrollView } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { commonStyles } from '../../styles/commonStyles';
 import { assessAIRisk } from '../../api/AIrisk';
 
@@ -48,7 +49,14 @@ export default function AIRiskScreen({ onBack }) {
     setResult(null);
     
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      // Capture at lower quality to reduce initial size
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+      // Resize & compress further (max width 800px) for upload efficiency
+      const manipulated = await ImageManipulator.manipulateAsync(
+        photo.uri,
+        [{ resize: { width: 800 } }],
+        { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
+      );
       setShowCamera(false);
       setLoading(true);
 
@@ -60,7 +68,7 @@ export default function AIRiskScreen({ onBack }) {
         lat: pos.coords.latitude,
         lon: pos.coords.longitude,
         timestamp: new Date().toISOString(),
-        imageUri: photo.uri,
+        imageUri: manipulated.uri,
       };
 
       const data = await assessAIRisk(payload);
@@ -82,52 +90,74 @@ export default function AIRiskScreen({ onBack }) {
   const handleWebUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
     setLoading(true);
     setError('');
     setResult(null);
-    
     try {
-      // Get location for web
-      const loc = await Location.requestForegroundPermissionsAsync();
-      let lat = 0, lon = 0;
-      
-      if (loc.status === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
-      }
-      
-      // Convert file to data URI
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const payload = {
-          vehicleId: 'web_device',
-          lat,
-          lon,
-          timestamp: new Date().toISOString(),
-          imageUri: e.target.result,
-        };
-        
+      const locPerm = await Location.requestForegroundPermissionsAsync();
+      let lat = 42.3601, lon = -71.0589; // fallback
+      if (locPerm.status === 'granted') {
         try {
-          const data = await assessAIRisk(payload);
-          if (!data.success) {
-            setError(data.error || 'Assessment failed');
-          } else {
-            setResult(data);
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = pos.coords.latitude;
+          lon = pos.coords.longitude;
+        } catch {}
+      }
+      // Compress image client-side using canvas
+      const compressedFile = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 800;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              const scale = Math.min(maxDim / width, maxDim / height);
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => {
+                if (!blob) return reject(new Error('Compression failed'));
+                const newFile = new File([blob], 'upload.jpg', { type: 'image/jpeg' });
+                console.log('[AIRiskScreen:web] original size KB:', (file.size/1024).toFixed(2), 'compressed size KB:', (blob.size/1024).toFixed(2));
+                resolve(newFile);
+              },
+              'image/jpeg',
+              0.6
+            );
+          } catch (err) {
+            reject(err);
           }
-        } catch (err) {
-          console.log('[AIRiskScreen] assessment error', err);
-          setError('Failed to assess risk. Please try again.');
-        } finally {
-          setLoading(false);
-        }
-      };
-      reader.readAsDataURL(file);
+        };
+        img.onerror = reject;
+        const reader = new FileReader();
+        reader.onload = (e) => { img.src = e.target.result; };
+        reader.readAsDataURL(file);
+      });
+
+      const data = await assessAIRisk({
+        vehicleId: 'web_device',
+        lat,
+        lon,
+        timestamp: new Date().toISOString(),
+        file: compressedFile,
+      });
+      if (!data.success) {
+        setError(data.error || 'Assessment failed');
+      } else {
+        setResult(data);
+      }
     } catch (e) {
       console.log('[AIRiskScreen] web upload error', e);
       setError('Failed to process image');
+    } finally {
       setLoading(false);
+      event.target.value = '';
     }
   };
 
