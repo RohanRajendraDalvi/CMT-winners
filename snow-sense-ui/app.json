@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "snow-sense",
+    "slug": "snow-sense",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "extra": {
+      "eas": {
+        "projectId": "d4c4b6f9-a6e0-4c34-bae9-dff73a3377e8"
+      }
+    },
+    "android": {
+      "package": "com.rohandalvi.snowsense"
+    },
+    "ios": {}
+  }
+}

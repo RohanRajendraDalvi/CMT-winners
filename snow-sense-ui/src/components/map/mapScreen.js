@@ -1,7 +1,10 @@
 // components/map/MapScreen.js
 import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Platform } from 'react-native';
+// Removed expo-maps to avoid native module requirement in Expo Go
+// Map renders via Leaflet in a WebView instead
+import { WebView } from 'react-native-webview';
 
 const MapScreen = ({ slips, userLocation, onBack }) => {
   const mapRef = useRef(null);
@@ -97,14 +100,8 @@ const MapScreen = ({ slips, userLocation, onBack }) => {
   };
 
   const centerOnUser = () => {
-    if (userLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: userLocation.lat,
-        longitude: userLocation.lon,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }, 1000);
-    }
+    // No-op: WebView Leaflet map does not expose animate API via ref.
+    // Could be implemented via postMessage/injected JS if needed.
   };
 
   return (
@@ -125,175 +122,15 @@ const MapScreen = ({ slips, userLocation, onBack }) => {
         )}
       </View>
 
-      {/* Map */}
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={getMapRegion()}
-        onPress={handleMapPress}
-        provider={PROVIDER_GOOGLE}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-      >
-        {/* User location marker */}
-        {userLocation && (
-          <Marker
-            coordinate={{
-              latitude: userLocation.lat,
-              longitude: userLocation.lon,
-            }}
-            title="Your Location"
-            pinColor="blue"
-          />
-        )}
-
-        {/* Slip markers */}
-        {slips.map((slip, index) => {
-          const [lon, lat] = slip.geoPoint.coordinates;
-          return (
-            <Marker
-              key={slip._id || index}
-              coordinate={{ latitude: lat, longitude: lon }}
-              onPress={() => handleMarkerPress(slip)}
-              pinColor="#ff6b6b"
-            >
-              <View style={styles.markerContainer}>
-                <View style={styles.markerCircle}>
-                  <Text style={styles.markerText}>⚠️</Text>
-                </View>
-              </View>
-              <Callout tooltip>
-                <View style={styles.calloutContainer}>
-                  <Text style={styles.calloutTitle}>Slip Reported</Text>
-                  <Text style={styles.calloutTime}>{formatDate(slip.timestamp)}</Text>
-                </View>
-              </Callout>
-            </Marker>
-          );
-        })}
-      </MapView>
-
-      {/* Bottom sheet with slip details */}
-      {selectedSlip && (
-        <View style={styles.detailsPanel}>
-          <TouchableOpacity 
-            style={styles.closePanelButton}
-            onPress={() => setSelectedSlip(null)}
-          >
-            <Text style={styles.closePanelText}>×</Text>
-          </TouchableOpacity>
-
-          <ScrollView style={styles.detailsContent}>
-            <View style={styles.detailsHeader}>
-              <Text style={styles.detailsIcon}>
-                {getWeatherIcon(selectedSlip.weather?.weather?.[0]?.main)}
-              </Text>
-              <View style={styles.detailsHeaderText}>
-                <Text style={styles.detailsTitle}>Slip Event</Text>
-                <Text style={styles.detailsTime}>
-                  {formatDate(selectedSlip.timestamp)}
-                </Text>
-                {userLocation && (
-                  <Text style={styles.detailsDistance}>
-                    {calculateDistance(
-                      userLocation.lat,
-                      userLocation.lon,
-                      selectedSlip.geoPoint.coordinates[1],
-                      selectedSlip.geoPoint.coordinates[0]
-                    )}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.detailsSection}>
-              <Text style={styles.sectionTitle}>Weather Conditions</Text>
-              
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Condition</Text>
-                <Text style={styles.detailValue}>
-                  {selectedSlip.weather?.weather?.[0]?.description || 'Unknown'}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Temperature</Text>
-                <Text style={styles.detailValue}>
-                  {selectedSlip.weather?.main?.temp 
-                    ? `${Math.round(selectedSlip.weather.main.temp)}°F`
-                    : 'N/A'}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Feels Like</Text>
-                <Text style={styles.detailValue}>
-                  {selectedSlip.weather?.main?.feels_like 
-                    ? `${Math.round(selectedSlip.weather.main.feels_like)}°F`
-                    : 'N/A'}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Humidity</Text>
-                <Text style={styles.detailValue}>
-                  {selectedSlip.weather?.main?.humidity 
-                    ? `${selectedSlip.weather.main.humidity}%`
-                    : 'N/A'}
-                </Text>
-              </View>
-
-              {selectedSlip.weather?.wind?.speed && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Wind Speed</Text>
-                  <Text style={styles.detailValue}>
-                    {Math.round(selectedSlip.weather.wind.speed)} mph
-                  </Text>
-                </View>
-              )}
-
-              {selectedSlip.weather?.visibility && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Visibility</Text>
-                  <Text style={styles.detailValue}>
-                    {(selectedSlip.weather.visibility / 1000).toFixed(1)} km
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.detailsSection}>
-              <Text style={styles.sectionTitle}>Location Details</Text>
-              
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Coordinates</Text>
-                <Text style={styles.detailValue}>
-                  {selectedSlip.geoPoint.coordinates[1].toFixed(4)}, {selectedSlip.geoPoint.coordinates[0].toFixed(4)}
-                </Text>
-              </View>
-
-              {selectedSlip.weather?.name && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Area</Text>
-                  <Text style={styles.detailValue}>
-                    {selectedSlip.weather.name}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Vehicle ID</Text>
-                <Text style={styles.detailValue}>
-                  {selectedSlip.vehicleId}
-                </Text>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
+      {/* Map: Leaflet-in-WebView works in Expo Go */}
+      {Platform.OS === 'web' ? (
+        <View style={{ flex: 1 }} />
+      ) : (
+        <WebView
+          style={{ flex: 1 }}
+          originWhitelist={["*"]}
+          source={{ html: generateLeafletHtml(userLocation, slips) }}
+        />
       )}
 
       {/* Legend */}
@@ -534,3 +371,86 @@ const styles = StyleSheet.create({
 });
 
 export default MapScreen;
+
+// Generate minimal Leaflet HTML with OSM tiles and markers
+function generateLeafletHtml(userLocation, slips) {
+  const centerLat = userLocation?.lat ?? 37.7749;
+  const centerLon = userLocation?.lon ?? -122.4194;
+  const markersJs = (slips || [])
+      .map((s, i) => {
+        const lat = s.lat ?? s.geoPoint?.coordinates?.[1];
+        const lon = s.lon ?? s.geoPoint?.coordinates?.[0];
+        if (lat == null || lon == null) return '';
+        const time = (s.timestamp != null) ? new Date(s.timestamp).toLocaleString() : 'Unknown';
+        const temp = s.weather?.main?.temp != null ? `${Math.round(s.weather.main.temp)}°C` : 'N/A';
+        const feels = s.weather?.main?.feels_like != null ? `${Math.round(s.weather.main.feels_like)}°C` : 'N/A';
+        const humidity = s.weather?.main?.humidity != null ? `${s.weather.main.humidity}%` : 'N/A';
+        const wind = s.weather?.wind?.speed != null ? `${Math.round(s.weather.wind.speed)} m/s` : 'N/A';
+        const cond = s.weather?.weather?.[0]?.description ?? s.weather?.weather?.[0]?.main ?? 'Unknown';
+        const area = s.weather?.name ?? 'Unknown';
+        const veh = s.vehicleId ?? '—';
+        const popupHtml = `
+          <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto; max-width:240px;">
+            <div style="font-weight:600; margin-bottom:6px;">Slip ${i + 1}</div>
+            <div><b>Time:</b> ${time}</div>
+            <div><b>Vehicle:</b> ${veh}</div>
+            <div><b>Area:</b> ${area}</div>
+            <div><b>Condition:</b> ${cond}</div>
+            <div><b>Temp:</b> ${temp} (feels ${feels})</div>
+            <div><b>Humidity:</b> ${humidity}</div>
+            <div><b>Wind:</b> ${wind}</div>
+            <div style="margin-top:6px; color:#555;">Lat ${lat.toFixed(5)}, Lon ${lon.toFixed(5)}</div>
+          </div>
+        `;
+        return `L.marker([${lat}, ${lon}], {icon: slipIcon}).addTo(map).bindPopup(${JSON.stringify(popupHtml)});`;
+      })
+      .join('\n');
+
+  const userMarkerJs = userLocation
+    ? `L.marker([${centerLat}, ${centerLon}], {icon: userIcon}).addTo(map).bindPopup('Your Location');`
+    : '';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([${centerLat}, ${centerLon}], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const userIcon = L.icon({
+      iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-2x-blue.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      shadowSize: [41, 41]
+    });
+
+    const slipIcon = L.icon({
+      iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-2x-red.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      shadowSize: [41, 41]
+    });
+
+    ${userMarkerJs}
+    ${markersJs}
+  </script>
+</body>
+</html>`;
+}
